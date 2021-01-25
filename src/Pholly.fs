@@ -151,15 +151,26 @@ module Policy =
         onBreak = config.OnBreak,
         onReset = config.OnReset
       )
-    let execute asyncWorkload = 
-      try
-        breakerPolicy.ExecuteAsync(fun _ -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
-      with
-      | :? BrokenCircuitException as exn ->
-        match config.CircuitOpenResult with
-        | Some circuitOpenResult -> async { return circuitOpenResult }
-        | None -> raise exn      
-    
+    let execute asyncWorkload = async {
+      let! choice = breakerPolicy.ExecuteAsync(fun _ -> async { return! asyncWorkload } |> Async.StartAsTask)
+                    |> Async.AwaitTask
+                    |> Async.Catch
+      match choice with
+      | Choice1Of2 r -> return r
+      | Choice2Of2 exn ->
+        return match exn with
+               | :? AggregateException as exn when (exn.InnerException :? BrokenCircuitException) ->
+                 match config.CircuitOpenResult with
+                 | Some circuitOpenResult -> circuitOpenResult
+                 | None -> raise exn
+               // I think I can remove the below
+               | :? BrokenCircuitException as exn ->
+                 match config.CircuitOpenResult with
+                 | Some circuitOpenResult -> circuitOpenResult
+                 | None -> raise exn
+               | _ -> raise exn
+    }
+
     (execute, (fun _ -> breakerPolicy.Reset()), (fun _ -> breakerPolicy.Isolate()))
   
   let circuitBreaker<'a,'b> (props:(CircuitBreaker.CircuitBreakerConfig<'a,'b> -> CircuitBreaker.CircuitBreakerConfig<'a,'b>) seq) =
