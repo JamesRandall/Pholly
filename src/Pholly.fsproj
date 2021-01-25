@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net5.0</TargetFramework>
+        <PackageVersion>0.0.1</PackageVersion>
+        <Title>Pholly</Title>
+        <Authors>James Randall</Authors>
+        <Description>A F# wrapper for Polly</Description>
+        <Copyright>(c) 2021 James Randall</Copyright>
+        <PackageProjectUrl>https://github.com/JamesRandall/Pholly</PackageProjectUrl>
+        <PackageLicenseUrl>https://raw.githubusercontent.com/JamesRandall/Pholly/main/LICENSE</PackageLicenseUrl>
+        <RepositoryUrl>https://github.com/JamesRandall/Pholly</RepositoryUrl>
+        <PackageTags>fsharp polly resilience cloud</PackageTags>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="Pholly.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Polly" Version="7.2.1" />
+    </ItemGroup>
+
+</Project>
