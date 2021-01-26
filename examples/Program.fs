@@ -46,8 +46,9 @@ let circuitBreakerDemo () =
   let breakerExecute,breakerReset,breakerIsolate =
     Policy.circuitBreaker [
       breakOn 3<consecutiveErrors>
+      resetAfter (30 |> seconds)
       whenCircuitOpened (fun _ _ _ -> printf "Breaker hit\n" ; ())
-      circuitOpenResult ("Circuit is open" |> Error)
+      resultWhenCircuitOpen ("Circuit is open" |> Error)
     ]
     
   printf "\n\n# Circuit Breaker Demo\n\n"
@@ -70,7 +71,7 @@ let circuitBreakerDemo () =
   let executeAsync,_,_ =
       Policy.circuitBreakerAsync [
           breakOn 3<consecutiveErrors>
-          circuitOpenResult ("Circuit is open" |> Error)
+          resultWhenCircuitOpen ("Circuit is open" |> Error)
       ]
 
   async {

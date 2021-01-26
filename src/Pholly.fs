@@ -30,8 +30,8 @@ module CircuitBreaker =
   (* Need to decide if tuples or records / interfaces are a better pattern for results
       let breaker:CircuitBreakerProps.CircuitBreaker<'a,'b> =
         { Execute = execute
-          Isolate = fun _ -> breakerPolicy.Isolate()
-          Reset =  fun _ -> breakerPolicy.Reset()
+          Isolate = fun () -> breakerPolicy.Isolate()
+          Reset =  fun () -> breakerPolicy.Reset()
         }
   type CircuitBreaker<'a,'b> =
     { Execute: (unit -> Result<'a,'b>) -> Result<'a,'b>
@@ -55,7 +55,8 @@ module CircuitBreaker =
   let shouldBreak handler config = { config with ShouldBreak = handler }
   let whenCircuitOpened handler config = { config with OnBreak = handler }
   let whenCircuitReset handler config = { config with OnReset = handler }
-  let circuitOpenResult result config = { config with CircuitOpenResult = Some result } 
+  let resultWhenCircuitOpen result config = { config with CircuitOpenResult = Some result }
+  let resetAfter time config = { config with BreakDuration = time }
 
 module Retry =
   [<Measure>] type times
@@ -98,7 +99,7 @@ module Policy =
         .HandleResult(fun r -> r |> config.ShouldFallback)
         .Fallback(value |> Ok, onFallback)
     let execute workload =
-      match fallbackPolicy.Execute(fun _ -> workload ()) with
+      match fallbackPolicy.Execute(fun () -> workload ()) with
       | Ok value -> value
       | Error _ -> raise Fallback.UnsuccessfulFallbackException
     execute
@@ -122,7 +123,7 @@ module Policy =
         .HandleResult(fun r -> r |> config.ShouldFallback)
         .FallbackAsync(value |> Ok, fun dr ctx -> ((onFallback dr ctx) |> Async.StartAsTask) :> System.Threading.Tasks.Task)
     let execute asyncWorkload = async {
-      let! result = fallbackPolicy.ExecuteAsync(fun _ -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
+      let! result = fallbackPolicy.ExecuteAsync(fun () -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
       return
         match result with
         | Ok value -> value
@@ -152,7 +153,7 @@ module Policy =
         onReset = config.OnReset
       )
     let execute asyncWorkload = async {
-      let! choice = breakerPolicy.ExecuteAsync(fun _ -> async { return! asyncWorkload } |> Async.StartAsTask)
+      let! choice = breakerPolicy.ExecuteAsync(fun () -> async { return! asyncWorkload } |> Async.StartAsTask)
                     |> Async.AwaitTask
                     |> Async.Catch
       match choice with
@@ -163,7 +164,7 @@ module Policy =
                  match config.CircuitOpenResult with
                  | Some circuitOpenResult -> circuitOpenResult
                  | None -> raise exn
-               // I think I can remove the below
+               // I think I can remove the below but am leaving in until more testing confirms
                | :? BrokenCircuitException as exn ->
                  match config.CircuitOpenResult with
                  | Some circuitOpenResult -> circuitOpenResult
@@ -171,7 +172,7 @@ module Policy =
                | _ -> raise exn
     }
 
-    (execute, (fun _ -> breakerPolicy.Reset()), (fun _ -> breakerPolicy.Isolate()))
+    (execute, breakerPolicy.Reset, breakerPolicy.Isolate)
   
   let circuitBreaker<'a,'b> (props:(CircuitBreaker.CircuitBreakerConfig<'a,'b> -> CircuitBreaker.CircuitBreakerConfig<'a,'b>) seq) =
     let defaultProps:CircuitBreaker.CircuitBreakerConfig<'a,'b> =
@@ -194,14 +195,14 @@ module Policy =
       )
     let execute workload =
       try
-        breakerPolicy.Execute(fun _ -> workload ())
+        breakerPolicy.Execute(fun () -> workload ())
       with
       | :? BrokenCircuitException as exn ->
         match config.CircuitOpenResult with
         | Some circuitOpenResult -> circuitOpenResult
         | None -> raise exn
     
-    (execute, (fun _ -> breakerPolicy.Reset()), (fun _ -> breakerPolicy.Isolate()))
+    (execute, breakerPolicy.Reset, breakerPolicy.Isolate)
     
   let retryAsync<'a,'b> (retryProps:(Retry.RetryConfig<'a,'b> -> Retry.RetryConfig<'a,'b>) seq) =
     let defaultProps:(Retry.RetryConfig<'a,'b>) =
@@ -232,7 +233,7 @@ module Policy =
           let wrappedHandler = (fun r i (_:TimeSpan) ctx -> config.BeforeEachRetry r i ctx)
           retryPolicy.WaitAndRetryForeverAsync(durationProvider,wrappedHandler)
     let execute asyncWorkload =
-      retryPolicy.ExecuteAsync(fun _ -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
+      retryPolicy.ExecuteAsync(fun () -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
     execute
     
   let retry<'a,'b> (retryProps:(Retry.RetryConfig<'a,'b> -> Retry.RetryConfig<'a,'b>) seq) =
@@ -266,5 +267,5 @@ module Policy =
           let wrappedHandler = (fun r i (_:TimeSpan) ctx -> config.BeforeEachRetry r i ctx)
           retryPolicy.WaitAndRetryForever(durationProvider,wrappedHandler)
     let execute workload =
-      retryPolicy.Execute(fun _ -> workload ())
+      retryPolicy.Execute(fun () -> workload ())
     execute

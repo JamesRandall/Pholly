@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Pholly", "src\Pholly.fsproj", "{92DFEBE5-4FF5-4565-BF24-B2F836CDA989}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Examples", "examples\Examples.fsproj", "{5FA0C01E-FD85-4FD6-957A-F6DE3626CE12}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+								{92DFEBE5-4FF5-4565-BF24-B2F836CDA989}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+								{92DFEBE5-4FF5-4565-BF24-B2F836CDA989}.Debug|Any CPU.Build.0 = Debug|Any CPU
+								{92DFEBE5-4FF5-4565-BF24-B2F836CDA989}.Release|Any CPU.ActiveCfg = Release|Any CPU
+								{92DFEBE5-4FF5-4565-BF24-B2F836CDA989}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5FA0C01E-FD85-4FD6-957A-F6DE3626CE12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5FA0C01E-FD85-4FD6-957A-F6DE3626CE12}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5FA0C01E-FD85-4FD6-957A-F6DE3626CE12}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5FA0C01E-FD85-4FD6-957A-F6DE3626CE12}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
