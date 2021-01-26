@@ -32,7 +32,7 @@ let retryPolicyDemo () =
   }
   
   printf "# Retry Policy Demo\n\n"
-
+  
   match asyncRetryDemo |> Async.RunSynchronously with
   | Ok r1, Ok r2 -> printf "%d,%d\n\n" r1 r2
   | Ok r1, Error e2 -> printf "%d,%s\n" r1 e2
@@ -48,8 +48,8 @@ let circuitBreakerDemo () =
     Policy.circuitBreaker [
       breakOn 3<consecutiveErrors>
       resetAfter (30 |> seconds)
-      whenCircuitOpened (fun _ _ _ -> printf "Breaker hit\n" ; ())
-      resultWhenCircuitOpen ("Circuit is open" |> Error)
+      whenCircuitIsOpened (fun _ _ _ -> printf "Breaker hit\n" ; ())
+      whenCircuitIsOpenReturn ("Circuit is open" |> Error)
     ]
     
   printf "\n\n# Circuit Breaker Demo\n\n"
@@ -72,7 +72,7 @@ let circuitBreakerDemo () =
   let executeAsync,_,_ =
       Policy.circuitBreakerAsync [
           breakOn 3<consecutiveErrors>
-          resultWhenCircuitOpen ("Circuit is open" |> Error)
+          whenCircuitIsOpenReturn ("Circuit is open" |> Error)
       ]
 
   async {

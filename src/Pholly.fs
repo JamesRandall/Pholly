@@ -1,9 +1,4 @@
-﻿module Pholly
-
-open System
-open Polly.CircuitBreaker
-
-(*
+﻿(*
 Pholly provides a F# style DSL for constructing and using Polly policies. It attempts to:
   1. Be expressive and easy to read
   2. Type safe
@@ -11,6 +6,11 @@ Pholly provides a F# style DSL for constructing and using Polly policies. It att
 It takes a fairly typical function builder type approach and the policy constructors return
 executers that can be reused so as to avoid repeated reconstruction of policies.
 *)
+
+module Pholly
+
+open System
+open Polly.CircuitBreaker
 
 [<Measure>] type ms
 
@@ -59,9 +59,9 @@ module CircuitBreaker =
     
   let breakOn consecutiveErrors config = { config with BreakOn = consecutiveErrors }
   let shouldBreak handler config = { config with ShouldBreak = handler }
-  let whenCircuitOpened handler config = { config with OnBreak = handler }
-  let whenCircuitReset handler config = { config with OnReset = handler }
-  let resultWhenCircuitOpen result config = { config with CircuitOpenResult = Some result }
+  let whenCircuitIsOpened handler config = { config with OnBreak = handler }
+  let whenCircuitIsReset handler config = { config with OnReset = handler }
+  let whenCircuitIsOpenReturn result config = { config with CircuitOpenResult = Some result }
   let resetAfter time config = { config with BreakDuration = time }
 
 module Retry =
