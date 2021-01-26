@@ -11,7 +11,7 @@ module Pholly
 
 open System
 open System.Threading.Tasks
-open FSharp.Control.Tasks
+open FSharp.Control.Tasks.NonAffine
 open Polly.CircuitBreaker
 
 [<Measure>] type ms
