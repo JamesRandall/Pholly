@@ -10,6 +10,8 @@ executers that can be reused so as to avoid repeated reconstruction of policies.
 module Pholly
 
 open System
+open System.Threading.Tasks
+open FSharp.Control.Tasks
 open Polly.CircuitBreaker
 
 [<Measure>] type ms
@@ -23,7 +25,7 @@ module Fallback =
   type FallbackConfig<'a,'b> =
     { ShouldFallback: Result<'a,'b> -> bool
       OnFallback: (Polly.DelegateResult<Result<'a,'b>> -> Polly.Context -> unit) option
-      OnFallbackAsync: (Polly.DelegateResult<Result<'a,'b>> -> Polly.Context -> Async<unit>) option
+      OnFallbackAsync: (Polly.DelegateResult<Result<'a,'b>> -> Polly.Context -> Task<unit>) option
     }
     
   let shouldFallback handler config = { config with ShouldFallback = handler }
@@ -123,14 +125,14 @@ module Policy =
     let onFallback =
       match config.OnFallbackAsync,config.OnFallback with
       | Some onFallbackAsync, _ -> onFallbackAsync
-      | _, Some onFallback -> fun dr ctx -> async { onFallback dr ctx }
-      | _ -> fun _ _ -> async { return () }
+      | _, Some onFallback -> fun dr ctx -> task { onFallback dr ctx }
+      | _ -> fun _ _ -> task { return () }
     let fallbackPolicy =
       Policy
         .HandleResult(fun r -> r |> config.ShouldFallback)
-        .FallbackAsync(value |> Ok, fun dr ctx -> ((onFallback dr ctx) |> Async.StartAsTask) :> System.Threading.Tasks.Task)
-    let execute asyncWorkload = async {
-      let! result = fallbackPolicy.ExecuteAsync(fun () -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
+        .FallbackAsync(value |> Ok, fun dr ctx -> ((onFallback dr ctx)) :> Task)
+    let execute asyncWorkload = task {
+      let! result = fallbackPolicy.ExecuteAsync(fun () -> asyncWorkload ())
       return
         match result with
         | Ok value -> value
@@ -159,24 +161,21 @@ module Policy =
         onBreak = config.OnBreak,
         onReset = config.OnReset
       )
-    let execute asyncWorkload = async {
-      let! choice = breakerPolicy.ExecuteAsync(fun () -> async { return! asyncWorkload } |> Async.StartAsTask)
-                    |> Async.AwaitTask
-                    |> Async.Catch
-      match choice with
-      | Choice1Of2 r -> return r
-      | Choice2Of2 exn ->
-        return match exn with
-               | :? AggregateException as exn when (exn.InnerException :? BrokenCircuitException) ->
-                 match config.CircuitOpenResult with
-                 | Some circuitOpenResult -> circuitOpenResult
-                 | None -> raise exn
-               // I think I can remove the below but am leaving in until more testing confirms
-               | :? BrokenCircuitException as exn ->
-                 match config.CircuitOpenResult with
-                 | Some circuitOpenResult -> circuitOpenResult
-                 | None -> raise exn
-               | _ -> raise exn
+    let execute asyncWorkload = task {
+      try
+        return! breakerPolicy.ExecuteAsync(fun () -> asyncWorkload())
+      with
+         | :? BrokenCircuitException as exn ->
+            return
+              match config.CircuitOpenResult with
+               | Some circuitOpenResult -> circuitOpenResult
+               | None -> raise exn
+         // now I'm using tasks I don't think this is needed, but leaving as a failsafe for now 
+         | :? AggregateException as exn when (exn.InnerException :? BrokenCircuitException) ->
+           return
+             match config.CircuitOpenResult with
+             | Some circuitOpenResult -> circuitOpenResult
+             | None -> raise exn
     }
 
     (execute, breakerPolicy.Reset, breakerPolicy.Isolate)
@@ -245,7 +244,7 @@ module Policy =
           let wrappedHandler = (fun r i (_:TimeSpan) ctx -> retryHandler r i ctx)
           retryPolicy.WaitAndRetryForeverAsync(durationProvider,wrappedHandler)
     let execute asyncWorkload =
-      retryPolicy.ExecuteAsync(fun () -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
+      retryPolicy.ExecuteAsync(fun () -> asyncWorkload())
     execute
     
   let retry<'a,'b> (retryProps:(Retry.RetryConfig<'a,'b> -> Retry.RetryConfig<'a,'b>) seq) =
@@ -284,7 +283,7 @@ module Policy =
           let wrappedHandler = (fun r i (_:TimeSpan) ctx -> retryHandler r i ctx)
           retryPolicy.WaitAndRetryForever(durationProvider,wrappedHandler)
     let execute workload =
-      retryPolicy.Execute(fun () -> workload ())
+      retryPolicy.Execute(fun () -> workload())
     execute
     
   // we separate out retry forever as this means we can simply return 'a rather than Result<'a,'b> simplifying
@@ -302,7 +301,7 @@ module Policy =
   let retryForeverAsync<'a,'b> (retryProps:(Retry.RetryConfig<'a,'b> -> Retry.RetryConfig<'a,'b>) seq) =
     let forever (config:Retry.RetryConfig<'a,'b>) = { config with Retry = Retry.Forever }
     let resultExecute = retryAsync<'a,'b> ([forever] |> Seq.append retryProps)
-    let executeAsync asyncWorkload = async {
+    let executeAsync asyncWorkload = task {
       let! result = asyncWorkload |> resultExecute
       return
         match result with
@@ -311,14 +310,12 @@ module Policy =
     }
     executeAsync
 
-let (||>) leftSide rightSide =  
+let (-|>) leftSide rightSide =  
   let execute workload =
     rightSide (fun () -> workload |> leftSide)
   execute
 
-let (|||>) leftSide rightSide =
-  let executeAsync asyncWorkload = async {
-    let result = asyncWorkload |> leftSide
-    return! rightSide result
-  }
+let (--|>) leftSide rightSide =
+  let executeAsync asyncWorkload =
+    rightSide (fun () -> asyncWorkload |> leftSide)
   executeAsync

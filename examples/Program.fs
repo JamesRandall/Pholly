@@ -3,19 +3,20 @@
 open Pholly
 open Retry
 open CircuitBreaker
+open FSharp.Control.Tasks
+open System.Threading.Tasks
 
 let retryPolicyDemo () =
   let random = Random((DateTime.UtcNow.Ticks % (Int32.MaxValue |> int64)) |> int32)
   let workload () =
     let n = random.Next(10)
     if n > 6 then n |> Ok else "Out of range" |> Error
-  let asyncWorkload = async {
+  let asyncWorkload () = task {
     let n = random.Next(10)
     return if n > 6 then n |> Ok else "Out of range" |> Error
-  }
+  }  
   
-  let asyncRetryDemo = async {
-    
+  let asyncRetryDemo = task {    
     let retryPolicy =
       Policy.retryAsync [
         retry (upto 10<times>)
@@ -26,14 +27,14 @@ let retryPolicyDemo () =
     printf "This demo uses a random number it is highly likely to succeed but is not guaranteed to\n"
     let! resultOne = asyncWorkload |> retryPolicy
     printf "The next demo will never succeed - it always errors, but shows 10 retries\n"
-    let! resultTwo = async { return "Error" |> Error } |> retryPolicy
+    let! resultTwo = (fun () -> task { return "Error" |> Error }) |> retryPolicy
         
     return resultOne, resultTwo
   }
   
-  printf "# Retry Policy Demo\n\n"
+  printf "\n# Async Retry Policy Demo\n\n"
   
-  match asyncRetryDemo |> Async.RunSynchronously with
+  match asyncRetryDemo |> Async.AwaitTask |> Async.RunSynchronously with
   | Ok r1, Ok r2 -> printf "%d,%d\n\n" r1 r2
   | Ok r1, Error e2 -> printf "%d,%s\n" r1 e2
   | Error e1, Ok r2 -> printf "%s,%d\n" e1 r2
@@ -56,16 +57,18 @@ let circuitBreakerDemo () =
   
   let outputBreakerResult result = match result with | Ok _ -> () | Error e -> printf "Circuit breaker error: %s\n" e
   
-  breakerExecute (fun _ -> printf "cb1\n" ; "Gone wrong 1" |> Error) |> outputBreakerResult
-  breakerExecute (fun _ -> printf "cb2\n" ; "Gone wrong 2" |> Error) |> outputBreakerResult
-  breakerExecute (fun _ -> printf "cb3\n" ; "Gone wrong 3 - should trip breaker" |> Error) |> outputBreakerResult
-  breakerExecute (fun _ -> printf "cb4\n" ; "Gone wrong 4 - should not be printed" |> Error) |> outputBreakerResult
+  breakerExecute (fun () -> printf "cb1\n" ; "Gone wrong 1" |> Error) |> outputBreakerResult
+  breakerExecute (fun () -> printf "cb2\n" ; "Gone wrong 2" |> Error) |> outputBreakerResult
+  breakerExecute (fun () -> printf "cb3\n" ; "Gone wrong 3 - should trip breaker" |> Error) |> outputBreakerResult
+  breakerExecute (fun () -> printf "cb4\n" ; "Gone wrong 4 - should not be printed" |> Error) |> outputBreakerResult
   breakerReset ()
-  breakerExecute (fun _ -> printf "cb5\n" ; "Gone wrong 5 - should be printed, breaker reset" |> Error) |> outputBreakerResult
+  breakerExecute (fun () -> printf "cb5\n" ; "Gone wrong 5 - should be printed, breaker reset" |> Error) |> outputBreakerResult
   breakerIsolate ()
-  breakerExecute (fun _ -> printf "cb6\n" ; "Gone wrong 6 - should not be printed, breaker manually isolated" |> Error) |> outputBreakerResult
+  breakerExecute (fun () -> printf "cb6\n" ; "Gone wrong 6 - should not be printed, breaker manually isolated" |> Error) |> outputBreakerResult
 
-  let outputBreakerResultAsync result = async {
+  printf "\n\n# Async Circuit Breaker Demo\n\n"
+  
+  let outputBreakerResultAsync (result:Task<Result<string,string>>) = task {
     match! result with | Ok s -> printf "%s" s | Error e -> printf "Error: %s\n" e
   }
 
@@ -74,14 +77,18 @@ let circuitBreakerDemo () =
           breakOn 3<consecutiveErrors>
           whenCircuitIsOpenReturn ("Circuit is open" |> Error)
       ]
-
-  async {
-      do! async { return "Success" |> Ok } |> executeAsync |> outputBreakerResultAsync
-      do! async { return "Error" |> Error } |> executeAsync |> outputBreakerResultAsync
-      do! async { return "Error" |> Error } |> executeAsync |> outputBreakerResultAsync
-      do! async { return "Error" |> Error } |> executeAsync |> outputBreakerResultAsync
-      do! async { return "Success" |> Ok } |> executeAsync |> outputBreakerResultAsync    
-  } |> Async.RunSynchronously
+      
+  let asyncSuccessWorkload () =
+    task { return "Success" |> Ok }
+  let asyncErrorWorkload () =
+    task { return "Error" |> Error }
+  task {
+      do! asyncSuccessWorkload |> executeAsync |> outputBreakerResultAsync
+      do! asyncErrorWorkload |> executeAsync |> outputBreakerResultAsync
+      do! asyncErrorWorkload |> executeAsync |> outputBreakerResultAsync
+      do! asyncErrorWorkload |> executeAsync |> outputBreakerResultAsync
+      do! asyncSuccessWorkload |> executeAsync |> outputBreakerResultAsync    
+  } |> Async.AwaitTask |> Async.RunSynchronously
   
 let fallbackDemo () =
   printf "\n\n# Fallback Demo\n\n"
@@ -95,9 +102,9 @@ let fallbackDemo () =
   printf "Should return the meaning of life as this worked: %d\n" resultTwo
   
   let asyncFallbackPolicy = Policy.fallbackAsyncWith 101
-  let resultThree = async { return "Eeeek" |> Error } |> asyncFallbackPolicy |> Async.RunSynchronously
+  let resultThree = (fun () -> task { return "Eeeek" |> Error }) |> asyncFallbackPolicy |> Async.AwaitTask |> Async.RunSynchronously
   printf "Using the fallback value of 101 because this went wrong: %d\n" resultThree
-  let resultFour = async { return 84 |> Ok } |> asyncFallbackPolicy |> Async.RunSynchronously
+  let resultFour = (fun () -> task { return 84 |> Ok }) |> asyncFallbackPolicy |> Async.AwaitTask |> Async.RunSynchronously
   printf "Should return the meaning of life * 2 as this worked: %d\n" resultFour
   
 let policyCompositionDemo () =
@@ -116,13 +123,13 @@ let policyCompositionDemo () =
   let fallback = Policy.fallbackWith 42  
   let failingWorkload = fun () -> "Always going wrong to show error control flow" |> Error
   
-  let result = failingWorkload |> (breaker ||> retry ||> fallback)
+  let result = failingWorkload |> breaker -|> retry -|> fallback
   
   printf "Final result %d" result
   
 let policyCompositionAsyncDemo () =
   printf "\n\n# Async Policy Composition Demo\n"  
-  async {  
+  task {  
     let breaker,_,_ = Policy.circuitBreakerAsync [
       breakOn 3<consecutiveErrors>
       whenCircuitIsOpenReturn ("Circuit is open, execution blocked" |> Error)
@@ -133,13 +140,13 @@ let policyCompositionAsyncDemo () =
       beforeEachRetry (fun r _ _ -> printf "Retrying after error: %s \n" r)
     ]
     let fallback = Policy.fallbackAsyncWith 42  
-    let failingAsyncWorkload = async { return "Always going wrong to show error control flow" |> Error }
+    let failingAsyncWorkload () = task { return "Always going wrong to show error control flow" |> Error }
     
-    let! result = failingAsyncWorkload |> (breaker |||> retry |||> fallback)
+    let! result = failingAsyncWorkload |> breaker --|> retry --|> fallback
     
     printf "Final result %d" result
     return ()
-  } |> Async.RunSynchronously
+  } |> Async.AwaitTask |> Async.RunSynchronously
   
   
 [<EntryPoint>]

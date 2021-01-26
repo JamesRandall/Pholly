@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <TargetFramework>net5.0</TargetFramework>
-        <PackageVersion>0.0.5</PackageVersion>
+        <PackageVersion>0.0.7</PackageVersion>
         <Title>Pholly</Title>
         <Authors>James Randall</Authors>
         <Description>A F# wrapper for Polly</Description>
@@ -19,6 +19,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="Ply" Version="0.3.1" />
       <PackageReference Include="Polly" Version="7.2.1" />
     </ItemGroup>
 
