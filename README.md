@@ -1,10 +1,10 @@
 # Pholly
 
-A F# friendly wrapper for Polly policies that aims to be expressive.
+A F# friendly wrapper for Polly policies that aims to be expressive and clear to read and reason about.
 
 Documentation can be found in the [Dotnet Interactive Notebook](https://github.com/JamesRandall/Pholly/blob/main/notebooks/PhollyIntroduction.ipynb).
 
-Please do leave any feedback you might have as a GitHub Issue, I know some of the builder code needs tidying but I'm particularly interested on how expressive and useful you find the interface. I have some minor name changes in mind for the circuit breaker in that regard.
+Please do leave any feedback you might have as a GitHub Issue, I know some of the builder code needs tidying but I'm particularly interested in how expressive you find the interface - I'm really aiming for something that is very clear and readable.
 
 ## Thanks
 

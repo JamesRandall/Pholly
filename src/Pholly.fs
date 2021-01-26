@@ -25,6 +25,12 @@ module Fallback =
       OnFallback: (Polly.DelegateResult<Result<'a,'b>> -> Polly.Context -> unit) option
       OnFallbackAsync: (Polly.DelegateResult<Result<'a,'b>> -> Polly.Context -> Async<unit>) option
     }
+    
+  let shouldFallback handler config = { config with ShouldFallback = handler }
+  
+  let whenFallingBack handler config = { config with OnFallback = handler }
+  
+  let whenFallingBackAsync handler config = { config with OnFallbackAsync = handler }
 
 module CircuitBreaker =
   (* Need to decide if tuples or records / interfaces are a better pattern for results
@@ -59,6 +65,7 @@ module CircuitBreaker =
   let resetAfter time config = { config with BreakDuration = time }
 
 module Retry =
+  exception RetryForeverFailedException
   [<Measure>] type times
   
   type Retry =
@@ -78,7 +85,6 @@ module Retry =
   let beforeEachRetry handler config = { config with BeforeEachRetry = handler }
   let shouldRetry handler config = { config with ShouldRetry = handler }
   // syntactic sugar for retries
-  let forever = Forever
   let upto (value:int<times>) = value |> int |> Times  
     
 module Policy =
@@ -269,3 +275,27 @@ module Policy =
     let execute workload =
       retryPolicy.Execute(fun () -> workload ())
     execute
+    
+  // we separate out retry forever as this means we can simply return 'a rather than Result<'a,'b> simplifying
+  // usage for the caller
+  let retryForever<'a,'b> (retryProps:(Retry.RetryConfig<'a,'b> -> Retry.RetryConfig<'a,'b>) seq) =
+    let forever (config:Retry.RetryConfig<'a,'b>) = { config with Retry = Retry.Forever }
+    let resultExecute = retry<'a,'b> ([forever] |> Seq.append retryProps) 
+    let execute workload =
+      let result = workload |> resultExecute
+      match result with
+      | Ok r -> r
+      | Error _ -> raise Retry.RetryForeverFailedException // this should not occur as retrying until ok
+    execute
+    
+  let retryForeverAsync<'a,'b> (retryProps:(Retry.RetryConfig<'a,'b> -> Retry.RetryConfig<'a,'b>) seq) =
+    let forever (config:Retry.RetryConfig<'a,'b>) = { config with Retry = Retry.Forever }
+    let resultExecute = retryAsync<'a,'b> ([forever] |> Seq.append retryProps)
+    let executeAsync asyncWorkload = async {
+      let! result = asyncWorkload |> resultExecute
+      return
+        match result with
+        | Ok r -> r
+        | Error _ -> raise Retry.RetryForeverFailedException
+    }
+    executeAsync

@@ -23,7 +23,9 @@ let retryPolicyDemo () =
         beforeEachRetry (fun _ t _ -> printf "onRetry %d\n" t ; ())
       ]    
     
+    printf "This demo uses a random number it is highly likely to succeed but is not guaranteed to\n"
     let! resultOne = asyncWorkload |> retryPolicy
+    printf "The next demo will never succeed - it always errors, but shows 10 retries\n"
     let! resultTwo = async { return "Error" |> Error } |> retryPolicy
         
     return resultOne, resultTwo
@@ -38,9 +40,8 @@ let retryPolicyDemo () =
   | _ -> printf "Both went wrong!"
   
   let result =
-    workload |> Policy.retry [ retry forever ; withIntervalOf 50<ms> ; beforeEachRetry (fun _ t _ -> printf "foreverRetry %d\n" t ; ()) ]
-  let (Ok value) = result
-  printf "We have to succeed as we retry forever %d\n" value
+    workload |> Policy.retryForever [ withIntervalOf 50<ms> ; beforeEachRetry (fun _ t _ -> printf "foreverRetry %d\n" t ; ()) ]
+  printf "We have to succeed as we retry forever %d\n" result
   
 let circuitBreakerDemo () =
   let breakerExecute,breakerReset,breakerIsolate =
