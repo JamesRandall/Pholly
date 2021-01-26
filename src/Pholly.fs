@@ -66,6 +66,7 @@ module CircuitBreaker =
 
 module Retry =
   exception RetryForeverFailedException
+  exception FailedWithOkResultException
   [<Measure>] type times
   
   type Retry =
@@ -75,7 +76,7 @@ module Retry =
   type RetryConfig<'a,'b> =
     { Retry : Retry
       BackoffSequenceMs : int<ms> list
-      BeforeEachRetry : Polly.DelegateResult<Result<'a,'b>>->int->Polly.Context->unit
+      BeforeEachRetry : 'b->int->Polly.Context->unit
       ShouldRetry: Result<'a,'b> -> bool
     }    
     
@@ -111,7 +112,7 @@ module Policy =
     execute
     
   let fallbackWith value = fallbackWithOptions value []
-    
+  
   let fallbackAsyncWithOptions<'a,'b> (value:'a) (props:(Fallback.FallbackConfig<'a,'b> -> Fallback.FallbackConfig<'a,'b>) seq) =
     let defaultProps:Fallback.FallbackConfig<'a,'b> =
       { ShouldFallback = defaultResultComparer
@@ -222,21 +223,26 @@ module Policy =
     let durationProvider =
       fun (retryAttempt:int) _ -> TimeSpan.FromMilliseconds(config.BackoffSequenceMs.[min retryAttempt (config.BackoffSequenceMs.Length-1)] |> double)
     let retryPolicy = Policy.HandleResult(fun r -> r |> config.ShouldRetry)
+    let retryHandler =
+      fun (dr:DelegateResult<Result<'a,'b>>) ct ctx ->
+        match dr.Result with
+        | Error e -> config.BeforeEachRetry e ct ctx
+        | Ok _ -> raise Retry.FailedWithOkResultException      
     let retryPolicy =
       match config.Retry with
       | Retry.Times times ->
         match config.BackoffSequenceMs |> Seq.isEmpty with
         | true ->
-          retryPolicy.RetryAsync(times |> int,onRetry=config.BeforeEachRetry)
+          retryPolicy.RetryAsync(times |> int,onRetry=retryHandler)
         | false ->
-          let wrappedHandler = (fun r (_:TimeSpan) -> config.BeforeEachRetry r)
+          let wrappedHandler = (fun r (_:TimeSpan) -> retryHandler r)
           retryPolicy.WaitAndRetryAsync(times |> int, durationProvider,wrappedHandler)
       | Retry.Forever ->
         match config.BackoffSequenceMs |> Seq.isEmpty with
         | true ->
-          retryPolicy.RetryForeverAsync(onRetry=config.BeforeEachRetry)
+          retryPolicy.RetryForeverAsync(onRetry=retryHandler)
         | false ->          
-          let wrappedHandler = (fun r i (_:TimeSpan) ctx -> config.BeforeEachRetry r i ctx)
+          let wrappedHandler = (fun r i (_:TimeSpan) ctx -> retryHandler r i ctx)
           retryPolicy.WaitAndRetryForeverAsync(durationProvider,wrappedHandler)
     let execute asyncWorkload =
       retryPolicy.ExecuteAsync(fun () -> async { return! asyncWorkload } |> Async.StartAsTask) |> Async.AwaitTask
@@ -256,21 +262,26 @@ module Policy =
     let retryPolicy = Policy.HandleResult(fun r -> r |> config.ShouldRetry)
     let durationProvider =
       fun retryAttempt _ -> TimeSpan.FromMilliseconds(config.BackoffSequenceMs.[min retryAttempt (config.BackoffSequenceMs.Length-1)] |> double)
+    let retryHandler =
+      fun (dr:DelegateResult<Result<'a,'b>>) ct ctx ->
+        match dr.Result with
+        | Error e -> config.BeforeEachRetry e ct ctx
+        | Ok _ -> raise Retry.FailedWithOkResultException
     let retryPolicy =
       match config.Retry with
       | Retry.Times times ->
         match config.BackoffSequenceMs |> Seq.isEmpty with
         | true ->
-          retryPolicy.Retry(times |> int,onRetry=config.BeforeEachRetry)
+          retryPolicy.Retry(times |> int,onRetry=retryHandler)
         | false ->
-          let wrappedHandler = (fun r (_:TimeSpan) -> config.BeforeEachRetry r)
-          retryPolicy.WaitAndRetry(times |> int, durationProvider,wrappedHandler)
+          let wrappedHandler = (fun r (_:TimeSpan) -> retryHandler r)
+          retryPolicy.WaitAndRetry(times |> int, durationProvider, wrappedHandler)
       | Retry.Forever ->
         match config.BackoffSequenceMs |> Seq.isEmpty with
         | true ->
-          retryPolicy.RetryForever(onRetry=config.BeforeEachRetry)
+          retryPolicy.RetryForever(onRetry=retryHandler)
         | false ->          
-          let wrappedHandler = (fun r i (_:TimeSpan) ctx -> config.BeforeEachRetry r i ctx)
+          let wrappedHandler = (fun r i (_:TimeSpan) ctx -> retryHandler r i ctx)
           retryPolicy.WaitAndRetryForever(durationProvider,wrappedHandler)
     let execute workload =
       retryPolicy.Execute(fun () -> workload ())
@@ -299,3 +310,15 @@ module Policy =
         | Error _ -> raise Retry.RetryForeverFailedException
     }
     executeAsync
+
+let (||>) leftSide rightSide =  
+  let execute workload =
+    rightSide (fun () -> workload |> leftSide)
+  execute
+
+let (|||>) leftSide rightSide =
+  let executeAsync asyncWorkload = async {
+    let result = asyncWorkload |> leftSide
+    return! rightSide result
+  }
+  executeAsync

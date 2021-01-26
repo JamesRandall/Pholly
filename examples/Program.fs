@@ -100,9 +100,53 @@ let fallbackDemo () =
   let resultFour = async { return 84 |> Ok } |> asyncFallbackPolicy |> Async.RunSynchronously
   printf "Should return the meaning of life * 2 as this worked: %d\n" resultFour
   
+let policyCompositionDemo () =
+  printf "\n\n# Combined Policies Demo\n"
+  printf "------------------------\n"
+  
+  let breaker,_,_ = Policy.circuitBreaker [
+    breakOn 3<consecutiveErrors>
+    whenCircuitIsOpenReturn ("Circuit is open, execution blocked" |> Error)
+    whenCircuitIsOpened (fun _ _ _ -> printf "Circuit opening\n")
+  ]
+  let retry = Policy.retry [
+    retry (upto 10<times>)
+    beforeEachRetry (fun r _ _ -> printf "Retrying after error: %s \n" r)
+  ]
+  let fallback = Policy.fallbackWith 42  
+  let failingWorkload = fun () -> "Always going wrong to show error control flow" |> Error
+  
+  let result = failingWorkload |> (breaker ||> retry ||> fallback)
+  
+  printf "Final result %d" result
+  
+let policyCompositionAsyncDemo () =
+  printf "\n\n# Async Policy Composition Demo\n"  
+  async {  
+    let breaker,_,_ = Policy.circuitBreakerAsync [
+      breakOn 3<consecutiveErrors>
+      whenCircuitIsOpenReturn ("Circuit is open, execution blocked" |> Error)
+      whenCircuitIsOpened (fun _ _ _ -> printf "Circuit opening\n")
+    ]
+    let retry = Policy.retryAsync [
+      retry (upto 10<times>)
+      beforeEachRetry (fun r _ _ -> printf "Retrying after error: %s \n" r)
+    ]
+    let fallback = Policy.fallbackAsyncWith 42  
+    let failingAsyncWorkload = async { return "Always going wrong to show error control flow" |> Error }
+    
+    let! result = failingAsyncWorkload |> (breaker |||> retry |||> fallback)
+    
+    printf "Final result %d" result
+    return ()
+  } |> Async.RunSynchronously
+  
+  
 [<EntryPoint>]
 let main _ =
   retryPolicyDemo ()
   circuitBreakerDemo ()
   fallbackDemo ()
+  policyCompositionDemo ()
+  policyCompositionAsyncDemo ()
   0
