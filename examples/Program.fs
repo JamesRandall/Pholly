@@ -3,7 +3,6 @@
 open Pholly
 open Retry
 open CircuitBreaker
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 let retryPolicyDemo () =
@@ -21,7 +20,7 @@ let retryPolicyDemo () =
       Policy.retryAsync [
         retry (upto 10<times>)
         withIntervalsOf [50<ms> ; 150<ms> ; 500<ms>]
-        beforeEachRetry (fun _ t _ -> printf "onRetry %d\n" t ; ())
+        beforeEachRetry (fun _ t _ -> printf $"onRetry %d{t}\n" ; ())
       ]    
     
     printf "This demo uses a random number it is highly likely to succeed but is not guaranteed to\n"
@@ -35,14 +34,14 @@ let retryPolicyDemo () =
   printf "\n# Async Retry Policy Demo\n\n"
   
   match asyncRetryDemo |> Async.AwaitTask |> Async.RunSynchronously with
-  | Ok r1, Ok r2 -> printf "%d,%d\n\n" r1 r2
-  | Ok r1, Error e2 -> printf "%d,%s\n" r1 e2
-  | Error e1, Ok r2 -> printf "%s,%d\n" e1 r2
+  | Ok r1, Ok r2 -> printf $"%d{r1},%d{r2}\n\n"
+  | Ok r1, Error e2 -> printf $"%d{r1},%s{e2}\n"
+  | Error e1, Ok r2 -> printf $"%s{e1},%d{r2}\n"
   | _ -> printf "Both went wrong!"
   
   let result =
     workload |> Policy.retryForever [ withIntervalOf 50<ms> ; beforeEachRetry (fun _ t _ -> printf "foreverRetry %d\n" t ; ()) ]
-  printf "We have to succeed as we retry forever %d\n" result
+  printf $"We have to succeed as we retry forever %d{result}\n"
   
 let circuitBreakerDemo () =
   let breakerExecute,breakerReset,breakerIsolate =
@@ -55,7 +54,7 @@ let circuitBreakerDemo () =
     
   printf "\n\n# Circuit Breaker Demo\n\n"
   
-  let outputBreakerResult result = match result with | Ok _ -> () | Error e -> printf "Circuit breaker error: %s\n" e
+  let outputBreakerResult result = match result with | Ok _ -> () | Error e -> printf $"Circuit breaker error: %s{e}\n"
   
   breakerExecute (fun () -> printf "cb1\n" ; "Gone wrong 1" |> Error) |> outputBreakerResult
   breakerExecute (fun () -> printf "cb2\n" ; "Gone wrong 2" |> Error) |> outputBreakerResult
@@ -97,15 +96,15 @@ let fallbackDemo () =
     Policy.fallbackWith 99
     
   let resultOne = fallbackPolicy (fun _ -> "It went wrong" |> Error)
-  printf "Using the fallback value because this went wrong: %d\n" resultOne
+  printf $"Using the fallback value because this went wrong: %d{resultOne}\n"
   let resultTwo = fallbackPolicy (fun _ -> 42 |> Ok)
-  printf "Should return the meaning of life as this worked: %d\n" resultTwo
+  printf $"Should return the meaning of life as this worked: %d{resultTwo}\n"
   
   let asyncFallbackPolicy = Policy.fallbackAsyncWith 101
   let resultThree = (fun () -> task { return "Eeeek" |> Error }) |> asyncFallbackPolicy |> Async.AwaitTask |> Async.RunSynchronously
-  printf "Using the fallback value of 101 because this went wrong: %d\n" resultThree
+  printf $"Using the fallback value of 101 because this went wrong: %d{resultThree}\n"
   let resultFour = (fun () -> task { return 84 |> Ok }) |> asyncFallbackPolicy |> Async.AwaitTask |> Async.RunSynchronously
-  printf "Should return the meaning of life * 2 as this worked: %d\n" resultFour
+  printf $"Should return the meaning of life * 2 as this worked: %d{resultFour}\n"
   
 let policyCompositionDemo () =
   printf "\n\n# Combined Policies Demo\n"
