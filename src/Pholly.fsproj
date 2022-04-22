@@ -12,6 +12,7 @@
         <RepositoryUrl>https://github.com/JamesRandall/Pholly</RepositoryUrl>
         <PackageTags>fsharp polly resilience cloud</PackageTags>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
     </PropertyGroup>
 
     <ItemGroup>
@@ -19,7 +20,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Polly" Version="7.2.1" />
+      <PackageReference Include="Polly" Version="7.2.3" />
+      <PackageReference Include="FSharp.Core" Version="6.0.3" />
     </ItemGroup>
 
 </Project>
